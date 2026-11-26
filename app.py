@@ -317,7 +317,12 @@ from rapidfuzz import fuzz
 import importlib.util as _ilu
 # LITE mode = the online version: the large translation, voice, photo and picture models are not installed there.
 LITE = os.environ.get("DG_LITE") == "1" or _ilu.find_spec("transformers") is None
-UI_LANGS = ["English"] if LITE else OUTPUT_LANGUAGES
+# Online, translation / voice use Google services (see services/config.py), so all languages stay available.
+UI_LANGS = OUTPUT_LANGUAGES
+if LITE:
+    from config import ONLINE_INPUT_LANGUAGES as _VOICE_IN
+else:
+    _VOICE_IN = INPUT_LANGUAGES
 
 # ── Full-width widgets: works on old and new Streamlit versions ────────────────
 def _stretch_kwargs():
@@ -451,14 +456,16 @@ with tab_app:
         img = ImageOps.exif_transpose(img)
         return img.convert("RGB")
 
-    if LITE:
-        st.caption("Voice and photo input, translation and dish pictures are available in the full desktop version.")
-    else:
-        with st.expander("Add ingredients by voice or photo (optional)", expanded=False):
-            v_tab, p_tab = st.tabs(["Voice", "Photo"])
+    if True:
+        with st.expander("Add ingredients by voice (optional)" if LITE else "Add ingredients by voice or photo (optional)", expanded=False):
+            if LITE:
+                st.caption("Photo input and dish pictures are available in the full desktop version.")
+                v_tab, p_tab = st.container(), None
+            else:
+                v_tab, p_tab = st.tabs(["Voice", "Photo"])
 
             with v_tab:
-                in_lang = st.radio("Language you will speak", INPUT_LANGUAGES, horizontal=True, key="voice_lang")
+                in_lang = st.radio("Language you will speak", _VOICE_IN, horizontal=True, key="voice_lang")
                 rec_audio = st.audio_input("Press the microphone, say your ingredients, then press stop.", key="voice_rec")
                 if st.button("Add spoken ingredients", key="voice_go"):
                     src = rec_audio
@@ -487,7 +494,8 @@ with tab_app:
                         st.warning("We did not recognise: **" + ", ".join(heard_info[3]) +
                                    "**. Please say it again slowly, or type it in the box below.")
 
-            with p_tab:
+            with (p_tab if p_tab is not None else st.empty()):
+              if p_tab is not None:
                 mode = st.radio("Photo source", ["Upload photos", "Use camera"], horizontal=True, key="photo_mode")
                 if mode == "Upload photos":
                     img_files = st.file_uploader("Upload one or more photos of your ingredients (JPG, PNG, WEBP or HEIC)",
@@ -796,17 +804,17 @@ with tab_app:
             st.markdown(f'<div class="{css}">{safe}</div>', unsafe_allow_html=True)
 
         # Voice: generated automatically for every language that has an offline voice model
-        if text and not LITE and lang in VOICE_LANGUAGES:
+        if text and lang in VOICE_LANGUAGES:
             try:
                 if lang == "English":
                     speak_text, speak_lang = text, "English"
                 else:   # Roman Urdu is spoken using the Urdu-script text
                     speak_text, speak_lang = translate_recipe(en, "Urdu"), "Urdu"
                 audio = text_to_speech(speak_text, speak_lang)
-                st.audio(audio, format="audio/wav")
+                st.audio(audio, format="audio/wav" if audio[:4] == b"RIFF" else "audio/mp3")
             except Exception as e:
                 st.error(f"The {lang} voice is not available right now. ({e})")
-        elif text and not LITE:
+        elif text:
             st.info(f"Voice is not available for {lang} yet, so the recipe is shown as text only. "
                     "Voice is available in English, Roman Urdu and Urdu.")
 

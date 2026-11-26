@@ -7,7 +7,7 @@ OFFLINE voice input.
 """
 import os
 import tempfile
-from config import WHISPER_SIZE, WHISPER_CODES, MMS_ASR_MODEL, MMS_ASR_CODES, get_device
+from config import WHISPER_SIZE, WHISPER_CODES, MMS_ASR_MODEL, MMS_ASR_CODES, get_device, ONLINE, GSR_CODES
 
 _model = None
 _mms = None
@@ -56,6 +56,8 @@ def _transcribe_mms(path: str, language: str) -> str:
 
 def transcribe(audio_bytes: bytes, language: str = "English") -> str:
     """Audio bytes (wav/mp3/m4a...) -> text in the spoken language."""
+    if ONLINE:
+        return _transcribe_google(audio_bytes, language)
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         f.write(audio_bytes)
         path = f.name
@@ -72,3 +74,17 @@ def transcribe(audio_bytes: bytes, language: str = "English") -> str:
             os.remove(path)
         except OSError:
             pass
+
+
+def _transcribe_google(audio_bytes: bytes, language: str) -> str:
+    """Online version: Google Speech Recognition (free web API) through the SpeechRecognition package.
+    st.audio_input records WAV, which SpeechRecognition can read directly."""
+    import io
+    import speech_recognition as sr
+    r = sr.Recognizer()
+    with sr.AudioFile(io.BytesIO(audio_bytes)) as source:
+        audio = r.record(source)
+    try:
+        return r.recognize_google(audio, language=GSR_CODES.get(language, "en-US"))
+    except sr.UnknownValueError:
+        return ""

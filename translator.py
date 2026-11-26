@@ -12,7 +12,7 @@ No internet / no API is used after the model is downloaded once.
 
 import re
 import streamlit as st
-from config import NLLB_MODEL, NLLB_CODES, get_device
+from config import NLLB_MODEL, NLLB_CODES, get_device, ONLINE, GOOGLE_CODES
 
 _tok = None
 _model = None
@@ -29,6 +29,8 @@ def _load():
 
 def translate_batch(texts: list[str], src: str, tgt: str, batch_size: int = 8, num_beams: int = 3) -> list[str]:
     """Translate a list of short texts. src/tgt are keys of NLLB_CODES (English/Urdu/Sindhi/Pashto)."""
+    if ONLINE:
+        return _google_batch(texts, src, tgt)
     import torch
     tok, model = _load()
     dev = get_device()
@@ -47,6 +49,16 @@ def translate_batch(texts: list[str], src: str, tgt: str, batch_size: int = 8, n
         for i, t in zip(idx, tok.batch_decode(out, skip_special_tokens=True)):
             results[i] = t.strip()
     return results
+
+
+def _google_batch(texts: list[str], src: str, tgt: str) -> list[str]:
+    """Online version: Google Translate through deep-translator (no model on the server)."""
+    from deep_translator import GoogleTranslator
+    tr = GoogleTranslator(source=GOOGLE_CODES[src], target=GOOGLE_CODES[tgt])
+    out = []
+    for t in texts:
+        out.append((tr.translate(t) or "").strip() if t.strip() else "")
+    return out
 
 
 # ── Recipe text handling ───────────────────────────────────────────────────────

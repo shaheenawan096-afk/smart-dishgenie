@@ -12,7 +12,7 @@ import re
 import wave
 import numpy as np
 import streamlit as st
-from config import TTS_MODELS, KOKORO_MODEL, KOKORO_VOICE, get_device
+from config import TTS_MODELS, KOKORO_MODEL, KOKORO_VOICE, get_device, ONLINE, GTTS_CODES
 
 _models = {}
 _kokoro = None          # None = not tried yet, False = not available
@@ -135,9 +135,18 @@ def _kokoro_wav(text: str):
 @st.cache_data(show_spinner=False, max_entries=32)
 def text_to_speech(text: str, lang: str) -> bytes:
     """
-    lang = 'English' or 'Urdu'.  Returns WAV bytes.
+    lang = 'English' or 'Urdu'.  Returns WAV bytes (offline models) or MP3 bytes (online version, gTTS).
     RAISES on failure (so errors are not cached).
     """
+    if ONLINE:
+        from gtts import gTTS
+        text = _prep_english(text) if lang == "English" else _prep_urdu(text)
+        buf = io.BytesIO()
+        gTTS(text=text, lang=GTTS_CODES[lang]).write_to_fp(buf)
+        data = buf.getvalue()
+        if not data:
+            raise ValueError("Nothing to speak.")
+        return data
     if lang == "English":
         try:
             wav = _kokoro_wav(text)
