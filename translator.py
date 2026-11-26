@@ -51,13 +51,52 @@ def translate_batch(texts: list[str], src: str, tgt: str, batch_size: int = 8, n
     return results
 
 
+def _google_call(tr, text: str, tries: int = 4) -> str:
+    """One Google Translate request, with a short wait and retry if Google says 'too many requests'."""
+    import time
+    for k in range(tries):
+        try:
+            return (tr.translate(text) or "").strip()
+        except Exception:
+            if k == tries - 1:
+                raise
+            time.sleep(1.2 * (k + 1))
+    return ""
+
+
 def _google_batch(texts: list[str], src: str, tgt: str) -> list[str]:
-    """Online version: Google Translate through deep-translator (no model on the server)."""
+    """Online version: Google Translate through deep-translator (no model on the server).
+    Google allows only ~5 requests per second, so ALL pieces are sent together as one text
+    (one line per piece) and split again afterwards. Only if the line count does not match,
+    the pieces are sent one by one with a small pause."""
+    import time
     from deep_translator import GoogleTranslator
     tr = GoogleTranslator(source=GOOGLE_CODES[src], target=GOOGLE_CODES[tgt])
-    out = []
-    for t in texts:
-        out.append((tr.translate(t) or "").strip() if t.strip() else "")
+    idx = [i for i, t in enumerate(texts) if t.strip()]
+    out = [""] * len(texts)
+    if not idx:
+        return out
+    # groups of lines below Google's 5000-character limit
+    groups, cur, size = [], [], 0
+    for i in idx:
+        t = " ".join(texts[i].split())
+        if cur and size + len(t) + 1 > 4500:
+            groups.append(cur); cur, size = [], 0
+        cur.append(i); size += len(t) + 1
+    if cur:
+        groups.append(cur)
+    for g_no, g in enumerate(groups):
+        if g_no:
+            time.sleep(0.4)
+        joined = "\n".join(" ".join(texts[i].split()) for i in g)
+        res = [x.strip() for x in _google_call(tr, joined).split("\n") if x.strip()]
+        if len(res) == len(g):
+            for i, r in zip(g, res):
+                out[i] = r
+        else:                                   # rare: Google merged or split lines -> one by one
+            for i in g:
+                out[i] = _google_call(tr, texts[i])
+                time.sleep(0.3)
     return out
 
 
