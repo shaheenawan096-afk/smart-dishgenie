@@ -51,17 +51,52 @@ def translate_batch(texts: list[str], src: str, tgt: str, batch_size: int = 8, n
     return results
 
 
-def _google_call(tr, text: str, tries: int = 4) -> str:
-    """One Google Translate request, with a short wait and retry if Google says 'too many requests'."""
+def _gtx(text: str, sl: str, tl: str) -> str:
+    """Google Translate, public 'gtx' endpoint (the same one browser extensions use). One POST per text."""
+    import requests
+    r = requests.post("https://translate.googleapis.com/translate_a/single",
+                      params={"client": "gtx", "sl": sl, "tl": tl, "dt": "t"},
+                      data={"q": text}, timeout=20,
+                      headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    data = r.json()
+    return "".join(seg[0] for seg in (data[0] or []) if seg and seg[0]).strip()
+
+
+def _mymemory(text: str, sl: str, tl: str) -> str:
+    """MyMemory free API (no key). Max ~500 characters per request, so the text is sent line by line."""
+    import requests, time
+    out = []
+    for line in text.split("\n"):
+        if not line.strip():
+            out.append(""); continue
+        r = requests.get("https://api.mymemory.translated.net/get",
+                         params={"q": line[:480], "langpair": f"{sl}|{tl}"}, timeout=20)
+        r.raise_for_status()
+        out.append((r.json().get("responseData") or {}).get("translatedText", "").strip())
+        time.sleep(0.2)
+    return "\n".join(out)
+
+
+def _google_call(tr, text: str, tries: int = 3) -> str:
+    """Translate one text. Tries, in order: Google gtx endpoint -> deep-translator (Google) -> MyMemory.
+    Each is retried after a short pause if the service says 'too many requests'."""
     import time
-    for k in range(tries):
-        try:
-            return (tr.translate(text) or "").strip()
-        except Exception:
-            if k == tries - 1:
-                raise
-            time.sleep(1.2 * (k + 1))
-    return ""
+    sl, tl = tr._source, tr._target
+    errors = []
+    for name, fn in (("gtx", lambda: _gtx(text, sl, tl)),
+                     ("google", lambda: (tr.translate(text) or "").strip()),
+                     ("mymemory", lambda: _mymemory(text, sl, tl))):
+        for k in range(tries):
+            try:
+                res = fn()
+                if res:
+                    return res
+                break
+            except Exception as e:
+                errors.append(f"{name}: {e}")
+                time.sleep(1.0 * (k + 1))
+    raise RuntimeError("Translation service is busy, please try again in a minute. " + (errors[-1] if errors else ""))
 
 
 def _google_batch(texts: list[str], src: str, tgt: str) -> list[str]:
