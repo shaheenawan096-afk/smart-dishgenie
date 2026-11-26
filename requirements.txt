@@ -3,3 +3,9 @@ rapidfuzz
 numpy
 pillow
 requests
+# online version: light cloud services instead of the large offline models
+deep-translator
+gTTS
+SpeechRecognition
+audioop-lts; python_version >= "3.13"
+standard-aifc; python_version >= "3.13"

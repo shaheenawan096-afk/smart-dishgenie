@@ -52,3 +52,17 @@ def get_device() -> str:
         return "cuda" if torch.cuda.is_available() else "cpu"
     except Exception:
         return "cpu"
+
+
+# ── Online (cloud) mode ────────────────────────────────────────────────────────
+# The free cloud server cannot hold the large offline models. When they are not installed, the
+# online version uses light cloud services instead: Google Translate (deep-translator) for
+# translation, Google Text-to-Speech (gTTS) for reading the recipe, and Google Speech Recognition
+# (SpeechRecognition) for voice input. The laptop version keeps using the offline models.
+import os as _os
+import importlib.util as _ilu
+ONLINE = _os.environ.get("DG_LITE") == "1" or _ilu.find_spec("transformers") is None
+GOOGLE_CODES = {"English": "en", "Urdu": "ur", "Sindhi": "sd", "Pashto": "ps"}          # Google Translate
+GTTS_CODES   = {"English": "en", "Urdu": "ur"}                                         # gTTS voices
+GSR_CODES    = {"English": "en-US", "Urdu": "ur-PK"}                                   # Google Speech Recognition
+ONLINE_INPUT_LANGUAGES = ["English", "Urdu"]                                           # voice input online
